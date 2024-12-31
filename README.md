@@ -4,7 +4,8 @@
 
 ![octahedron_anim](https://github.com/user-attachments/assets/fa3eb48a-3ea7-4f9b-8711-6721545e08bb)
 
-(bad size - its github maximum)
+_(bad size - its github maximum)_
+
 
 
 To reproduce the model:
