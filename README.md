@@ -26,6 +26,7 @@ for good model i reccomend 100kk iterations, but you can make 10-20kk for good p
 
 
 **choice:**
+
 1 - Generate model
 
 2 - Show model from file
