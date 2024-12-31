@@ -17,7 +17,7 @@ To reproduce the model:
 
 **Change iterations parametr**
 
-for good model i reccomend 100kk iterations, but you can make 10-20kk for good performance.
+for good model i recommend 100kk iterations, but you can make 10-20kk for good performance.
 
 
 **run**
