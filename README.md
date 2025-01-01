@@ -12,7 +12,7 @@ To reproduce the model:
  
 **Install dependency**
 
-`pip install pyvista`
+`pip install pyvista numpy`
 
 
 **Change iterations parametr**
