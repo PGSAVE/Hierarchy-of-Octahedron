@@ -4,26 +4,31 @@ import random
 import pickle
 import os
 
-# ПАРАМЕТРЫ
-thousand = 1000
-million = 1000000
+# CONSTANTS
+THOUSAND = 1000
+MILLION = 1000000
 
-# Количество итераций
-iterations = 200 * million
-file = "fractal_data"
+# Number of iterations for fractal generation
+ITERATIONS = 200 * MILLION
+FILE_NAME = "fractal_data"
 
-# Центр и радиус октаэдра
-center = [0.0, 0.0, 0.0]  # Центрирование в начале координат
-radius = 10.0  # Размер октаэдра
+# Octahedron center and radius
+CENTER = [0.0, 0.0, 0.0]  # Centered at origin
+RADIUS = 10.0  # Size of octahedron
 
-resolution = (600, 600)  # Разрешение изображения
-n_frames = 120  # Количество кадров в анимации
-zoom = 2.0  # Увеличение
+# Visualization settings
+RESOLUTION = (600, 600)  # Image resolution
+N_FRAMES = 120  # Number of frames for animation
+ZOOM = 2.0  # Camera zoom factor
+
+PKL_FILE = f"{FILE_NAME}.pkl"
+GIF_FILE = f"{FILE_NAME}.gif"
 
 
-# Функция для генерации точек трёхмерного фрактала
-# Используем вершины октаэдра для трёхмерной структуры
 def generate_octahedron_points(radius, center):
+    """
+    Generates the vertices of an octahedron centered at the given coordinates with the given radius.
+    """
     points = [
         [center[0] + radius, center[1], center[2]],
         [center[0] - radius, center[1], center[2]],
@@ -34,11 +39,11 @@ def generate_octahedron_points(radius, center):
     ]
     return np.array(points)
 
-pkl_file = f"{file}.pkl"
-gif_file = f"{file}.gif"
 
-# Функция для генерации точек фрактала "треугольник Серпинского в 3D"
 def generate_fractal_octahedron(center, radius, iterations):
+    """
+    Generates a 3D fractal using the octahedron's vertices as attractors.
+    """
     points = generate_octahedron_points(radius, center)
     current_point = np.array(center)
     fractal_points = []
@@ -49,12 +54,15 @@ def generate_fractal_octahedron(center, radius, iterations):
         random_vertex = points[selected_vertex]
         current_point = (current_point + random_vertex) / 2
         fractal_points.append(current_point)
-        colors.append(selected_vertex)  # Сохраняем индекс вершины для цвета
+        colors.append(selected_vertex)  # Store vertex index for coloring
 
     return np.array(fractal_points), np.array(colors)
 
-# Функция для генерации рёбер октаэдра
+
 def generate_edges(points):
+    """
+    Generates the edges of the octahedron for visualization.
+    """
     edges = [
         (0, 1), (0, 2), (0, 4),
         (1, 3), (1, 5), (2, 3),
@@ -66,114 +74,101 @@ def generate_edges(points):
         edge_points.append(points[edge[1]])
     return np.array(edge_points)
 
-# Функция для запуска визуализации и вращения
+
 def create_rotation_gif(mesh, lines):
-    plotter = pv.Plotter(window_size=resolution, off_screen=True)
+    """
+    Generates a rotating GIF of the fractal structure.
+    """
+    plotter = pv.Plotter(window_size=RESOLUTION, off_screen=True)
     plotter.enable_eye_dome_lighting()
     plotter.add_mesh(mesh, scalars="colors", rgb=True, point_size=2)
     plotter.add_mesh(lines, color="white", line_width=1.5)
+    plotter.open_gif(GIF_FILE)
 
-    plotter.open_gif(gif_file)
-    for i in range(n_frames):
-        angle = i * (360 / n_frames)
-        # Используем переменную zoom для управления расстоянием
+    for i in range(N_FRAMES):
+        angle = i * (360 / N_FRAMES)
         plotter.camera_position = [
-            (20 * zoom * np.cos(np.radians(angle)),
-             20 * zoom * np.sin(np.radians(angle)),
-             10 * zoom),
-            (0, 0, 0),  # Точка, на которую смотрит камера
-            (0, 0, 1)  # Вектор "вверх"
+            (20 * ZOOM * np.cos(np.radians(angle)),
+             20 * ZOOM * np.sin(np.radians(angle)),
+             10 * ZOOM),
+            (0, 0, 0),  # Camera target
+            (0, 0, 1)  # Up vector
         ]
         plotter.write_frame()
+    
     plotter.close()
-    print(f"\033[92mGIF создан и сохранён как '{gif_file}'\033[0m")
+    print(f"\033[92mGIF created and saved as '{GIF_FILE}'\033[0m")
 
-# Функция для отображения 3D модели
+
 def display_model(mesh, lines):
+    """
+    Displays the 3D model interactively.
+    """
     plotter = pv.Plotter()
     plotter.enable_eye_dome_lighting()
     plotter.add_mesh(mesh, scalars="colors", rgb=True, point_size=2)
     plotter.add_mesh(lines, color="white", line_width=1.5)
-    plotter.show()  # Открывает окно для просмотра модели
+    plotter.show()
 
-# Основная логика программы
+
+# User input for execution mode
 choice = input("""
-Выберите действие: 
-1 - Сгенерировать снова
-2 - Загрузить из файла
-3 - Сгенерировать GIF из файла: 
+Select an option: 
+1 - Generate new fractal
+2 - Load from file
+3 - Generate GIF from file
 
-Ваш выбор: """).strip()
+Your choice: """).strip()
 
-if choice == "1" or not os.path.exists(pkl_file):
-    # Генерация точек фрактала в 3D
-    print("Генерация новых данных...")
-    fractal_points, fractal_colors = generate_fractal_octahedron(center, radius, iterations)
-
-    # Сохранение данных в pkl файл
-    with open(pkl_file, "wb") as f:
+if choice == "1" or not os.path.exists(PKL_FILE):
+    print("Generating new fractal data...")
+    fractal_points, fractal_colors = generate_fractal_octahedron(CENTER, RADIUS, ITERATIONS)
+    
+    with open(PKL_FILE, "wb") as f:
         pickle.dump((fractal_points, fractal_colors), f)
-    print(f"\033[94mДанные сохранены в {pkl_file}\033[0m")
+    print(f"\033[94mData saved to {PKL_FILE}\033[0m")
 
-elif choice == "2" and os.path.exists(pkl_file):
-    # Загрузка данных из файла
-    print(f"Загрузка данных из {pkl_file}...")
-    with open(pkl_file, "rb") as f:
+elif choice == "2" and os.path.exists(PKL_FILE):
+    print(f"Loading data from {PKL_FILE}...")
+    with open(PKL_FILE, "rb") as f:
         fractal_points, fractal_colors = pickle.load(f)
-
-    # Преобразование индексов вершин в цвета
+    
     color_map = np.array([
-        [255, 0, 0],  # Красный
-        [0, 255, 0],  # Зелёный
-        [0, 0, 255],  # Синий
-        [255, 255, 0],  # Жёлтый
-        [255, 0, 255],  # Магента
-        [0, 255, 255],  # Циан
+        [255, 0, 0], [0, 255, 0], [0, 0, 255],
+        [255, 255, 0], [255, 0, 255], [0, 255, 255]
     ], dtype=np.uint8)
     colors = color_map[fractal_colors]
-
-    # Создание объекта для визуализации точек
+    
     mesh = pv.PolyData(fractal_points)
     mesh["colors"] = colors
-
-    # Создание рёбер октаэдра
-    edges = generate_edges(generate_octahedron_points(radius, center))
+    
+    edges = generate_edges(generate_octahedron_points(RADIUS, CENTER))
     lines = pv.PolyData()
     lines.points = edges
     lines.lines = np.hstack([[2, i, i + 1] for i in range(0, len(edges), 2)])
-
-    # Отображение модели
+    
     display_model(mesh, lines)
 
-elif choice == "3" and os.path.exists(pkl_file):
-    # Загрузка данных из файла
-    print(f"Загрузка данных из {pkl_file} для генерации GIF...")
-    with open(pkl_file, "rb") as f:
+elif choice == "3" and os.path.exists(PKL_FILE):
+    print(f"Loading data from {PKL_FILE} for GIF generation...")
+    with open(PKL_FILE, "rb") as f:
         fractal_points, fractal_colors = pickle.load(f)
-
-    # Преобразование индексов вершин в цвета
+    
     color_map = np.array([
-        [255, 0, 0],  # Красный
-        [0, 255, 0],  # Зелёный
-        [0, 0, 255],  # Синий
-        [255, 255, 0],  # Жёлтый
-        [255, 0, 255],  # Магента
-        [0, 255, 255],  # Циан
+        [255, 0, 0], [0, 255, 0], [0, 0, 255],
+        [255, 255, 0], [255, 0, 255], [0, 255, 255]
     ], dtype=np.uint8)
     colors = color_map[fractal_colors]
-
-    # Создание объекта для визуализации точек
+    
     mesh = pv.PolyData(fractal_points)
     mesh["colors"] = colors
-
-    # Создание рёбер октаэдра
-    edges = generate_edges(generate_octahedron_points(radius, center))
+    
+    edges = generate_edges(generate_octahedron_points(RADIUS, CENTER))
     lines = pv.PolyData()
     lines.points = edges
     lines.lines = np.hstack([[2, i, i + 1] for i in range(0, len(edges), 2)])
-
-    # Генерация GIF
+    
     create_rotation_gif(mesh, lines)
 
 else:
-    print("Некорректный выбор. Завершение программы.")
+    print("Invalid choice. Exiting.")
