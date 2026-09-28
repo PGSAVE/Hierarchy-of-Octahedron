@@ -2,7 +2,8 @@
 Renders a gallery of the Sierpinski octahedron without any GPU / VTK dependency.
 
     pip install numpy numba pillow
-    python gallery.py all            # or: hero cutaway xray slices variants build sweep
+    python gallery.py all      # or any of: hero exploded levels cutaway xray slices
+                               #            variants build sweep zoom
 
 Output goes to ./gallery/
 """
@@ -37,22 +38,60 @@ def linear(c):
 # ---------------------------------------------------------------- ray marching
 
 @njit(cache=True)
-def _scene(x, y, z, levels, cut):
+def _exploded(x, y, z, levels, gap):
+    """Level 1 taken apart: the six half-size octahedra (fractal inside) and the eight
+    tetrahedral holes between them, each pushed away from the centre by gap / 2."""
+    best = 1e9
+    a1 = 0
+    a2 = 0
+    hole = False
+    for v in range(6):
+        axis = v >> 1
+        c = 0.5 * (1.0 + gap) * (1.0 - 2.0 * (v & 1))
+        d, b1, b2 = of.estimate(2.0 * (x - (c if axis == 0 else 0.0)),
+                                2.0 * (y - (c if axis == 1 else 0.0)),
+                                2.0 * (z - (c if axis == 2 else 0.0)), levels)
+        if 0.5 * d < best:
+            best = 0.5 * d
+            a1 = v
+            a2 = b1
+            hole = False
+    # holes fly out further than the octahedra and are drawn at 85% so both stay visible
+    off = 1.5 * gap * 0.57735027
+    shrink = 0.85
+    for k in range(8):
+        # reflect into the (+,+,+) octant, where the hole is the tetrahedron
+        # 0, (1/2,1/2,0), (1/2,0,1/2), (0,1/2,1/2) with centroid (1/4,1/4,1/4)
+        qx = ((x if k & 1 else -x) - off - 0.25) / shrink + 0.25
+        qy = ((y if k & 2 else -y) - off - 0.25) / shrink + 0.25
+        qz = ((z if k & 4 else -z) - off - 0.25) / shrink + 0.25
+        d = max(max(qx - qy - qz, qy - qx - qz), max(qz - qx - qy, qx + qy + qz - 1.0))
+        d *= 0.57735027 * shrink
+        if d < best:
+            best = d
+            hole = True
+    return best, a1, a2, hole
+
+
+@njit(cache=True)
+def _scene(x, y, z, levels, opts):
+    if opts[5] > 0.0:
+        return _exploded(x, y, z, levels, opts[5])
     d, a1, a2 = of.estimate(x, y, z, levels)
     # optional cutaway: remove the half-space n.p > c
-    dc = cut[0] * x + cut[1] * y + cut[2] * z - cut[3]
-    if cut[4] > 0.5 and dc > d:
+    dc = opts[0] * x + opts[1] * y + opts[2] * z - opts[3]
+    if opts[4] > 0.5 and dc > d:
         return dc, a1, a2, True
     return d, a1, a2, False
 
 
 @njit(cache=True)
-def _dist(x, y, z, levels, cut):
-    return _scene(x, y, z, levels, cut)[0]
+def _dist(x, y, z, levels, opts):
+    return _scene(x, y, z, levels, opts)[0]
 
 
 @njit(cache=True)
-def _shade_pixel(ox, oy, oz, dx, dy, dz, levels, cut, light, palette, cut_color,
+def _shade_pixel(ox, oy, oz, dx, dy, dz, levels, opts, light, palette, cut_color,
                  pix_angle):
     t = 0.0
     hit = False
@@ -60,7 +99,7 @@ def _shade_pixel(ox, oy, oz, dx, dy, dz, levels, cut, light, palette, cut_color,
         px = ox + dx * t
         py = oy + dy * t
         pz = oz + dz * t
-        d = _dist(px, py, pz, levels, cut)
+        d = _dist(px, py, pz, levels, opts)
         eps = max(2e-5, 0.6 * pix_angle * t)
         if d < eps:
             hit = True
@@ -73,14 +112,14 @@ def _shade_pixel(ox, oy, oz, dx, dy, dz, levels, cut, light, palette, cut_color,
     px = ox + dx * t
     py = oy + dy * t
     pz = oz + dz * t
-    d, a1, a2, is_cut = _scene(px, py, pz, levels, cut)
+    d, a1, a2, is_cut = _scene(px, py, pz, levels, opts)
 
     # normal: tetrahedral gradient
     h = max(1e-5, 0.5 * pix_angle * t)
-    k0 = _dist(px + h, py - h, pz - h, levels, cut)
-    k1 = _dist(px - h, py - h, pz + h, levels, cut)
-    k2 = _dist(px - h, py + h, pz - h, levels, cut)
-    k3 = _dist(px + h, py + h, pz + h, levels, cut)
+    k0 = _dist(px + h, py - h, pz - h, levels, opts)
+    k1 = _dist(px - h, py - h, pz + h, levels, opts)
+    k2 = _dist(px - h, py + h, pz - h, levels, opts)
+    k3 = _dist(px + h, py + h, pz + h, levels, opts)
     nx = k0 - k1 - k2 + k3
     ny = -k0 - k1 + k2 + k3
     nz = -k0 + k1 - k2 + k3
@@ -96,7 +135,7 @@ def _shade_pixel(ox, oy, oz, dx, dy, dz, levels, cut, light, palette, cut_color,
     shadow = 1.0
     st = 1e-3
     for _ in range(96):
-        ds = _dist(sx + light[0] * st, sy + light[1] * st, sz + light[2] * st, levels, cut)
+        ds = _dist(sx + light[0] * st, sy + light[1] * st, sz + light[2] * st, levels, opts)
         shadow = min(shadow, 12.0 * ds / st)
         if shadow < 1e-3:
             shadow = 0.0
@@ -111,16 +150,19 @@ def _shade_pixel(ox, oy, oz, dx, dy, dz, levels, cut, light, palette, cut_color,
     w = 1.0
     for i in range(1, 6):
         hh = 0.012 * i
-        dd = _dist(px + nx * hh, py + ny * hh, pz + nz * hh, levels, cut)
+        dd = _dist(px + nx * hh, py + ny * hh, pz + nz * hh, levels, opts)
         occ += w * (hh - dd)
         w *= 0.7
     ao = min(1.0, max(0.0, 1.0 - 6.0 * occ))
 
-    if is_cut:
+    if is_cut or a1 < 0:
+        # cut faces, holes and the level-0 octahedron
         br = cut_color[0]
         bg = cut_color[1]
         bb = cut_color[2]
     else:
+        if a2 < 0:
+            a2 = a1
         br = 0.72 * palette[a1, 0] + 0.28 * palette[a2, 0]
         bg = 0.72 * palette[a1, 1] + 0.28 * palette[a2, 1]
         bb = 0.72 * palette[a1, 2] + 0.28 * palette[a2, 2]
@@ -144,7 +186,7 @@ def _shade_pixel(ox, oy, oz, dx, dy, dz, levels, cut, light, palette, cut_color,
 
 
 @njit(parallel=True, cache=True)
-def _render(width, height, cam, target, fov, levels, cut, light, palette, cut_color,
+def _render(width, height, cam, target, fov, levels, opts, light, palette, cut_color,
             bg_top, bg_bottom):
     img = np.empty((height, width, 3), dtype=np.float64)
     fx = target[0] - cam[0]
@@ -175,7 +217,7 @@ def _render(width, height, cam, target, fov, levels, cut, light, palette, cut_co
             dz = fz + sx * rz + sy * uz
             dl = np.sqrt(dx * dx + dy * dy + dz * dz)
             r, g, b = _shade_pixel(cam[0], cam[1], cam[2], dx / dl, dy / dl, dz / dl,
-                                   levels, cut, light, palette, cut_color, pix_angle)
+                                   levels, opts, light, palette, cut_color, pix_angle)
             if r < 0.0:
                 s = j / (height - 1.0)
                 img[j, i, 0] = bg_top[0] * (1 - s) + bg_bottom[0] * s
@@ -206,13 +248,17 @@ def to_image(img, supersample=1):
 
 
 def raymarch(size, azimuth=38, elevation=24, distance=4.2, fov_deg=32, levels=9, cut=None,
-             light=(0.45, -0.35, 0.82), supersample=2, target=(0, 0, 0)):
+             explode=0.0, light=(0.45, -0.35, 0.82), supersample=2, target=(0, 0, 0)):
+    """cut = (nx, ny, nz, c) removes n.p > c;  explode > 0 shows level 1 taken apart."""
     cam, tgt = camera(azimuth, elevation, distance, target)
     lt = np.array(light, float)
     lt /= np.linalg.norm(lt)
-    cutv = np.zeros(5) if cut is None else np.array([*cut, 1.0], float)
+    opts = np.zeros(6)
+    if cut is not None:
+        opts[:5] = [*cut, 1.0]
+    opts[5] = explode
     s = size * supersample
-    img = _render(s, s, cam, tgt, np.radians(fov_deg), levels, cutv, lt, linear(PALETTE),
+    img = _render(s, s, cam, tgt, np.radians(fov_deg), levels, opts, lt, linear(PALETTE),
                   linear(CUT_COLOR), linear(BG_TOP), linear(BG_BOTTOM))
     return to_image(img, supersample)
 
@@ -255,6 +301,20 @@ def save(im, name):
 
 def hero():
     save(raymarch(1100, levels=9), "hero.png")
+
+
+def exploded():
+    """Why octahedra: one octahedron = 6 half-size octahedra + 8 tetrahedral holes."""
+    save(raymarch(900, levels=6, explode=0.6, distance=6.3, elevation=28), "exploded.png")
+
+
+def levels():
+    size = 380
+    strip = Image.new("RGB", (size * 5, size))
+    for k in range(5):
+        im = raymarch(size, levels=k, distance=4.4)
+        strip.paste(label(im, f"{6 ** k:,}", 22), (size * k, 0))
+    save(strip.crop((0, 0, strip.width, int(size * 0.9))), "levels.png")
 
 
 def cutaway():
@@ -425,14 +485,14 @@ def zoom(size=300, n_frames=40):
     for k in range(n_frames):
         c = 0.3 * 2.0 ** (-k / n_frames)
         cam = np.array([c, c, c])
-        img = _render(2 * size, 2 * size, cam, np.zeros(3), np.radians(70), 18, np.zeros(5),
+        img = _render(2 * size, 2 * size, cam, np.zeros(3), np.radians(70), 18, np.zeros(6),
                       cam / np.linalg.norm(cam), linear(PALETTE), linear(CUT_COLOR),
                       linear(BG_TOP), linear(BG_BOTTOM))
         frames.append(to_image(img, 2))
     save_gif(frames, "zoom.gif", 70)
 
 
-SCENES = dict(hero=hero, cutaway=cutaway, xray=xray, slices=slices, variants=variants,
+SCENES = dict(hero=hero, exploded=exploded, levels=levels, cutaway=cutaway, xray=xray, slices=slices, variants=variants,
               build=build, sweep=sweep, zoom=zoom)
 
 if __name__ == "__main__":
