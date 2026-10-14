@@ -1,0 +1,1182 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<style>:root{padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}body{margin:0}[hidden]{display:none!important}</style>
+</head>
+<body>
+<title>Октаэдр Серпинского</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500&family=Unbounded:wght@300;500&display=swap">
+<style>
+/* Layout: a single cinema stage (the film frame letterboxed to 9:16, 1:1 or 16:9) over a slim
+   transport bar. One dark look on purpose: the film is the page. */
+:root {
+  --ink: #07080d;
+  --ink-2: #10121b;
+  --line: #262a38;
+  --cream: #efe6d6;
+  --mute: #8d91a5;
+  --gold: #e6b566;
+  --font-display: "Unbounded", "Segoe UI", system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+  color-scheme: dark;
+}
+html, body { height: 100%; }
+body {
+  margin: 0;
+  background: var(--ink);
+  color: var(--cream);
+  font: 13px/1.4 var(--font-mono);
+  overflow: hidden;
+}
+.app { height: 100%; display: flex; flex-direction: column; }
+.stage {
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  place-items: center;
+  padding-block: 12px;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+}
+.frame {
+  position: relative;
+  background: var(--ink);
+  box-shadow: 0 0 0 1px var(--line), 0 30px 80px rgba(0, 0, 0, 0.55);
+  max-width: 100%;
+}
+.frame canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+.bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px 14px;
+  padding-block: 10px 14px;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+  border-top: 1px solid var(--line);
+  background: var(--ink-2);
+}
+.bar.hidden-ui { display: none; }
+button, select {
+  font: inherit;
+  color: var(--cream);
+  background: transparent;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 6px 10px;
+  cursor: pointer;
+}
+button:hover, select:hover { border-color: var(--mute); }
+button:focus-visible, select:focus-visible, input:focus-visible { outline: 2px solid var(--gold); outline-offset: 2px; }
+button.primary { border-color: var(--gold); color: var(--gold); }
+button[aria-pressed="true"] { background: var(--line); }
+.seg { display: inline-flex; gap: 4px; }
+.time { font-variant-numeric: tabular-nums; color: var(--mute); min-width: 92px; }
+.scrub { flex: 1 1 200px; min-width: 0; accent-color: var(--gold); }
+.spacer { flex: 1 1 0; }
+.note { color: var(--mute); }
+.overlay {
+  position: fixed;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  background: rgba(7, 8, 13, 0.82);
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+  z-index: 5;
+}
+.panel {
+  width: min(420px, 100%);
+  background: var(--ink-2);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 20px;
+  display: grid;
+  gap: 14px;
+}
+.panel h2 { margin: 0; font: 500 16px/1.3 var(--font-display); text-wrap: balance; }
+.panel label { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
+.panel .row { display: flex; gap: 10px; justify-content: flex-end; flex-wrap: wrap; }
+progress { width: 100%; accent-color: var(--gold); }
+.msg { color: var(--mute); min-height: 1.4em; overflow-wrap: anywhere; }
+.fallback { padding: 24px; max-width: 46ch; text-align: center; color: var(--mute); }
+@media (max-width: 560px) {
+  .hide-narrow { display: none; }
+}
+</style>
+
+<div class="app">
+  <div class="stage" id="stage">
+    <div class="frame" id="frame">
+      <canvas id="gl" aria-label="Анимация: октаэдр Серпинского"></canvas>
+      <canvas id="ov" aria-hidden="true"></canvas>
+    </div>
+  </div>
+  <div class="bar" id="bar">
+    <button id="play" class="primary" aria-label="Пауза">Пауза</button>
+    <button id="restart" aria-label="С начала">⟲</button>
+    <span class="time" id="time">00.0 / 46.0</span>
+    <input class="scrub" id="scrub" type="range" min="0" max="46" step="0.01" value="0" aria-label="Позиция в ролике">
+    <div class="seg" role="group" aria-label="Формат кадра">
+      <button id="a916" aria-pressed="true">9:16</button>
+      <button id="a11" aria-pressed="false">1:1</button>
+      <button id="a169" aria-pressed="false">16:9</button>
+    </div>
+    <div class="seg" role="group" aria-label="Язык подписей">
+      <button id="lru" aria-pressed="true">RU</button>
+      <button id="len" aria-pressed="false">EN</button>
+    </div>
+    <button id="hide" class="hide-narrow" title="Спрятать панель (H)">Чистый кадр</button>
+    <button id="export" class="primary">Экспорт видео</button>
+  </div>
+</div>
+
+<div class="overlay" id="exportBox" hidden>
+  <div class="panel" role="dialog" aria-modal="true" aria-labelledby="expTitle">
+    <h2 id="expTitle">Экспорт видео</h2>
+    <label for="expFps">Кадров в секунду
+      <select id="expFps"><option value="30">30</option><option value="60">60</option></select>
+    </label>
+    <label for="expAA">Сглаживание
+      <select id="expAA"><option value="2">×4 (чище, медленнее)</option><option value="1">выкл</option></select>
+    </label>
+    <div class="note" id="expSize"></div>
+    <progress id="expProg" max="1" value="0"></progress>
+    <div class="msg" id="expMsg">Кадры рендерятся по одному, поэтому видео получается без рывков на любом компьютере.</div>
+    <div class="row">
+      <button id="expCancel">Закрыть</button>
+      <button id="expGo" class="primary">Начать</button>
+    </div>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/mp4-muxer@5.2.2/build/mp4-muxer.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/webm-muxer@5.1.4/build/webm-muxer.js"></script>
+<script>
+"use strict";
+// ============================================================== timeline helpers
+const T_END = 46;
+const clamp = (x, a, b) => Math.min(b, Math.max(a, x));
+const lerp = (a, b, u) => a + (b - a) * u;
+const seg = (t, a, b) => clamp((t - a) / (b - a), 0, 1);
+const smooth = (e0, e1, x) => { const u = clamp((x - e0) / (e1 - e0), 0, 1); return u * u * (3 - 2 * u); };
+const ease = (u) => (u < 0.5 ? 4 * u * u * u : 1 - Math.pow(-2 * u + 2, 3) / 2);
+const easeOut = (u) => 1 - Math.pow(1 - u, 3);
+const easeIn = (u) => u * u * u;
+const rad = (d) => (d * Math.PI) / 180;
+
+// ============================================================== palette (sRGB)
+const PAL = [
+  [0.96, 0.42, 0.32], [0.98, 0.70, 0.26],   // +x coral, -x amber
+  [0.16, 0.70, 0.66], [0.46, 0.80, 0.34],   // +y teal,  -y green
+  [0.58, 0.46, 0.96], [0.30, 0.56, 0.98],   // +z violet, -z blue
+];
+const CREAM = [0.94, 0.89, 0.80];
+const lin = (c) => c.map((v) => Math.pow(v, 2.2));
+const VERTS = [[1, 0, 0], [-1, 0, 0], [0, 1, 0], [0, -1, 0], [0, 0, 1], [0, 0, -1]];
+const EDGES = [[0, 2], [0, 3], [0, 4], [0, 5], [1, 2], [1, 3], [1, 4], [1, 5], [2, 4], [2, 5], [3, 4], [3, 5]];
+
+// ============================================================== captions
+const COPY = {
+  ru: {
+    s1: ["ХАОС-ИГРА", "Шесть вершин октаэдра."],
+    s2: ["ПРАВИЛО", "Выбери вершину. Прыгни на полпути. Повтори."],
+    s3: ["МИЛЛИОНЫ ПРЫЖКОВ", "Случайные прыжки складываются в форму."],
+    s4: ["АНАТОМИЯ", "Октаэдр = 6 октаэдров + 8 пустот."],
+    s5: ["РЕКУРСИЯ", "И так внутри каждого из них."],
+    s6: ["СРЕЗ", "Снаружи кружево, внутри сплошные стены."],
+    s7: ["МАСШТАБ", "На любом увеличении одно и то же."],
+    jumps: "число прыжков",
+    octas: (k) => `октаэдров · уровень ${k}`,
+    cut: "высота среза",
+    zoom: "увеличение",
+    title: ["Октаэдр", "Серпинского"],
+    sub: [["размерность log"], ["2", 1], ["6 = 2.58496…"]],
+    small: "хаос-игра · 6 вершин · шаг ½",
+    locale: "ru-RU",
+  },
+  en: {
+    s1: ["THE CHAOS GAME", "Six vertices of an octahedron."],
+    s2: ["THE RULE", "Pick a vertex. Jump halfway. Repeat."],
+    s3: ["MILLIONS OF JUMPS", "Random jumps build a shape."],
+    s4: ["ANATOMY", "An octahedron = 6 octahedra + 8 holes."],
+    s5: ["RECURSION", "And again inside each of them."],
+    s6: ["CROSS-SECTION", "Lace outside, solid walls inside."],
+    s7: ["SCALE", "The same at every magnification."],
+    jumps: "jumps",
+    octas: (k) => `octahedra · level ${k}`,
+    cut: "cut height",
+    zoom: "magnification",
+    title: ["Sierpiński", "Octahedron"],
+    sub: [["dimension log"], ["2", 1], ["6 = 2.58496…"]],
+    small: "chaos game · 6 vertices · step ½",
+    locale: "en-US",
+  },
+};
+const CAPTIONS = [
+  { key: "s1", t0: 0.5, t1: 2.8 },
+  { key: "s2", t0: 3.0, t1: 6.7 },
+  { key: "s3", t0: 7.0, t1: 11.8 },
+  { key: "s4", t0: 12.4, t1: 17.5 },
+  { key: "s5", t0: 17.9, t1: 24.9 },
+  { key: "s6", t0: 25.3, t1: 30.9 },
+  { key: "s7", t0: 32.6, t1: 39.6 },
+];
+
+// ============================================================== chaos game points (seeded)
+const N_MAX = 3000000;
+function mulberry32(a) {
+  return function () {
+    a |= 0; a = (a + 0x6d2b79f5) | 0;
+    let t = Math.imul(a ^ (a >>> 15), 1 | a);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+const PTS = new Float32Array((N_MAX + 1) * 3);   // PTS[0] is the start: the centre
+const PCOL = new Float32Array(N_MAX + 1);
+const PV = new Uint8Array(N_MAX + 1);             // vertex chosen at each jump
+(function generate() {
+  const rnd = mulberry32(20241);
+  let x = 0, y = 0, z = 0;
+  for (let i = 1; i <= N_MAX; i++) {
+    const v = Math.floor(rnd() * 6);
+    const w = VERTS[v];
+    x = (x + w[0]) * 0.5; y = (y + w[1]) * 0.5; z = (z + w[2]) * 0.5;
+    PTS[3 * i] = x; PTS[3 * i + 1] = y; PTS[3 * i + 2] = z;
+    PCOL[i] = v; PV[i] = v;
+  }
+  PCOL[0] = 0;
+})();
+
+// ============================================================== the film: state at time t
+const ZOOM_AZ = 225, ZOOM_EL = 35.2644, ZOOM_D = 4.6, ZOOM_MIN = 0.0045;
+
+function cameraAt(t) {
+  let az = 25 + 5.2 * t;
+  let el = 21 + 3 * Math.sin(t * 0.35);
+  let dist = 4.5;
+  let fov = 31;
+  // pull back while the octahedron is taken apart
+  dist += 2.6 * smooth(13.4, 14.6, t) * (1 - smooth(16.4, 17.8, t));
+  // look down onto the cut
+  el += 15 * smooth(25.0, 26.6, t) * (1 - smooth(30.0, 31.4, t));
+  if (t > 30.8) {
+    const a = ease(seg(t, 30.8, 32.6));
+    az = lerp(az, ZOOM_AZ, a); el = lerp(el, ZOOM_EL, a); dist = lerp(dist, ZOOM_D, a);
+  }
+  if (t >= 32.6 && t < 41.6) {
+    az = ZOOM_AZ; el = ZOOM_EL;
+    const u = t < 39.6 ? ease(seg(t, 32.6, 39.6)) : 1 - ease(seg(t, 39.6, 41.6));
+    dist = Math.exp(lerp(Math.log(ZOOM_D), Math.log(ZOOM_MIN), u));
+    fov = lerp(31, 64, smooth(1.0, 0.3, dist));
+  }
+  if (t >= 41.6) {
+    const a = ease(seg(t, 41.6, 43.6));
+    az = lerp(ZOOM_AZ, 252, a) + 3.5 * Math.max(0, t - 43.6);
+    el = lerp(ZOOM_EL, 23, a);
+    dist = lerp(ZOOM_D, 4.5, a);
+  }
+  // lift the object for the closing title
+  const lift = smooth(41.6, 43.4, t);
+  return { az, el, dist, fov, lift };
+}
+
+function stateAt(t) {
+  const cam = cameraAt(t);
+  const s = {
+    t, cam,
+    mode: 0, level: 9, explode: 0, tetraOff: 0, tetraScale: 1, tint: 1,
+    cutOn: 0, cutC: 2, head: 0, solid: 0, n: 0, wire: 0, fade: 1,
+  };
+  // global fade in / out (the end fades to black so the film loops)
+  s.fade = smooth(0, 0.8, t) * (1 - smooth(45.2, 46, t));
+
+  // chaos game: one jump at a time, then exponentially faster
+  if (t >= 2.9 && t < 5.6) s.n = Math.floor(1 + 13 * Math.pow(seg(t, 2.9, 5.6), 1.5));
+  else if (t >= 5.6) s.n = Math.min(N_MAX, Math.floor(14 * Math.exp(Math.log(N_MAX / 14) * Math.pow(seg(t, 5.6, 9.8), 1.25))));
+  s.wire = smooth(0.2, 1.6, t) * (1 - smooth(8.6, 10.6, t));
+
+  // the cloud condenses into the solid
+  s.solid = ease(seg(t, 9.0, 11.8));
+
+  // level schedule
+  if (t < 12.0) s.level = 9;
+  else if (t < 13.6) s.level = lerp(9, 0, ease(seg(t, 12.0, 13.6)));
+  else if (t < 17.6) {
+    s.mode = 1; s.level = 0;
+    s.explode = 0.62 * (easeOut(seg(t, 13.6, 14.9)) - ease(seg(t, 16.3, 17.55)));
+    s.tetraOff = 1.3 * easeIn(seg(t, 14.9, 16.3));
+    s.tetraScale = 1 - ease(seg(t, 15.3, 16.3));
+    s.tint = ease(seg(t, 13.6, 14.7));
+  } else if (t < 25.0) {
+    const u = ((t - 17.6) / 7.4) * 8;
+    const k = Math.floor(u);
+    s.level = Math.min(9, 1 + k + ease(clamp((u - k - 0.3) / 0.7, 0, 1)));
+  } else {
+    s.level = clamp(9 + Math.log2(ZOOM_D / cam.dist), 9, 19);
+  }
+
+  // the cut
+  if (t >= 25.2 && t < 31.0) {
+    s.cutOn = 1;
+    s.cutC = lerp(1.02, 0, ease(seg(t, 25.4, 29.0))) + 1.02 * ease(seg(t, 30.1, 30.9));
+  }
+  // head light inside the hole
+  s.head = smooth(1.3, 0.45, cam.dist);
+  return s;
+}
+
+// ============================================================== camera maths (shared by GL, points, overlay)
+const sub3 = (a, b) => [a[0] - b[0], a[1] - b[1], a[2] - b[2]];
+const dot3 = (a, b) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
+const cross3 = (a, b) => [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]];
+const norm3 = (a) => { const l = Math.hypot(a[0], a[1], a[2]); return [a[0] / l, a[1] / l, a[2] / l]; };
+
+let ASPECT_MODE = "916";
+const FORMATS = { "916": [1080, 1920], "11": [1080, 1080], "169": [1920, 1080] };
+const SHIFT = { "916": [0, 0.0], "11": [0, -0.02], "169": [0.26, 0] };
+const FOV_MUL = { "916": 1, "11": 1.18, "169": 1.3 };
+const LIFT = { "916": 0.03, "11": 0.2, "169": 0 };
+
+function cameraBasis(cam, W, H) {
+  const a = rad(cam.az), e = rad(cam.el);
+  const pos = [cam.dist * Math.cos(e) * Math.cos(a), cam.dist * Math.cos(e) * Math.sin(a), cam.dist * Math.sin(e)];
+  const f = norm3(sub3([0, 0, 0], pos));
+  const r = norm3(cross3(f, [0, 0, 1]));
+  const u = cross3(r, f);
+  const aspect = W / H;
+  const tanMin = Math.tan(rad(cam.fov) / 2);
+  // the field of view is set on the shorter side of the frame
+  const tanV = aspect < 1 ? tanMin / aspect : tanMin * FOV_MUL[ASPECT_MODE];
+  const sh = SHIFT[ASPECT_MODE];
+  return { pos, f, r, u, tanV, aspect, shift: [sh[0], sh[1] + LIFT[ASPECT_MODE] * (cam.lift || 0)] };
+}
+
+function project(p, cb, W, H) {
+  const d = sub3(p, cb.pos);
+  const z = dot3(d, cb.f);
+  if (z <= 1e-5) return null;
+  const x = dot3(d, cb.r) / (z * cb.tanV * cb.aspect) + cb.shift[0];
+  const y = dot3(d, cb.u) / (z * cb.tanV) + cb.shift[1];
+  return [((x + 1) / 2) * W, ((1 - y) / 2) * H, z];
+}
+
+// ============================================================== WebGL2
+const glCanvas = document.getElementById("gl");
+const ovCanvas = document.getElementById("ov");
+const gl = glCanvas.getContext("webgl2", { antialias: false, alpha: false, premultipliedAlpha: false, preserveDrawingBuffer: false, powerPreference: "high-performance" });
+
+const VS_QUAD = `#version 300 es
+in vec2 aP; void main(){ gl_Position = vec4(aP, 0.0, 1.0); }`;
+
+const FS_MARCH = `#version 300 es
+precision highp float;
+precision highp int;
+uniform vec2 uRes;
+uniform vec3 uCam, uF, uR, uU;
+uniform float uTanV;
+uniform vec2 uShift;
+uniform int uMode;
+uniform float uLevel, uExplode, uTetraOff, uTetraScale, uTint;
+uniform float uCutOn;
+uniform vec4 uCut;
+uniform vec3 uKey;
+uniform float uHead, uSolid, uFade, uSeed, uCamDist;
+uniform int uAA;
+uniform vec3 uPal[6];
+uniform vec3 uCream, uGold, uBg0, uBg1;
+out vec4 outColor;
+
+const float K = 0.5773502692;
+float sdOcta(vec3 p) { return (abs(p.x) + abs(p.y) + abs(p.z) - 1.0) * K; }
+
+// distance to the level-\`level\` fractal; a fractional level morphs between two levels
+float fracDE(vec3 p, float level, out int a1, out int a2) {
+  a1 = -1; a2 = -1;
+  int L = int(floor(level));
+  float f = level - float(L);
+  float scale = 1.0;
+  float d = sdOcta(p);
+  for (int i = 0; i < 24; i++) {
+    if (i > L || (i == L && f < 1e-4)) break;
+    vec3 ap = abs(p);
+    if (ap.x + ap.y + ap.z > 4.0) break;
+    int v;
+    if (ap.x >= ap.y && ap.x >= ap.z) { v = p.x >= 0.0 ? 0 : 1; p *= 2.0; p.x -= (v == 0 ? 1.0 : -1.0); }
+    else if (ap.y >= ap.z)            { v = p.y >= 0.0 ? 2 : 3; p *= 2.0; p.y -= (v == 2 ? 1.0 : -1.0); }
+    else                              { v = p.z >= 0.0 ? 4 : 5; p *= 2.0; p.z -= (v == 4 ? 1.0 : -1.0); }
+    scale *= 2.0;
+    if (i == 0) a1 = v; else if (i == 1) a2 = v;
+    float dn = sdOcta(p) / scale;
+    d = (i == L) ? mix(d, dn, f) : dn;
+  }
+  return d;
+}
+
+vec3 axisDir(int v) {
+  float s = (v & 1) == 0 ? 1.0 : -1.0;
+  int a = v >> 1;
+  return a == 0 ? vec3(s, 0, 0) : (a == 1 ? vec3(0, s, 0) : vec3(0, 0, s));
+}
+
+// level 1 taken apart: 6 half-size octahedra and the 8 tetrahedral holes
+float explodeDE(vec3 p, out int a1, out int mat) {
+  float d = 1e9; a1 = 0; mat = 0;
+  for (int v = 0; v < 6; v++) {
+    vec3 c = axisDir(v) * (0.5 * (1.0 + uExplode));
+    float dv = sdOcta(2.0 * (p - c)) * 0.5;
+    if (dv < d) { d = dv; a1 = v; }
+  }
+  if (uTetraScale > 0.003) {
+    float off = (1.5 * uExplode + uTetraOff) * K;
+    float sh = uTetraScale;
+    for (int k = 0; k < 8; k++) {
+      vec3 s = vec3((k & 1) == 1 ? 1.0 : -1.0, (k & 2) == 2 ? 1.0 : -1.0, (k & 4) == 4 ? 1.0 : -1.0);
+      vec3 q = (s * p - off - 0.25) / sh + 0.25;
+      float dt = max(max(q.x - q.y - q.z, q.y - q.x - q.z), max(q.z - q.x - q.y, q.x + q.y + q.z - 1.0)) * K * sh;
+      if (dt < d) { d = dt; mat = 1; }
+    }
+  }
+  return d;
+}
+
+float map(vec3 p, out int a1, out int a2, out int mat) {
+  float d;
+  if (uMode == 1) { d = explodeDE(p, a1, mat); a2 = a1; }
+  else { d = fracDE(p, uLevel, a1, a2); mat = 0; }
+  if (uCutOn > 0.5) {
+    float dc = dot(uCut.xyz, p) - uCut.w;
+    if (dc > d) { d = dc; mat = 2; }
+  }
+  return d;
+}
+float mapD(vec3 p) { int a, b, m; return map(p, a, b, m); }
+
+float softShadow(vec3 p, vec3 l, float sc) {
+  float res = 1.0;
+  float s = 2e-3 * sc;
+  for (int i = 0; i < 56; i++) {
+    float h = mapD(p + l * s);
+    res = min(res, 12.0 * h / s);
+    if (res < 0.002) return 0.0;
+    s += clamp(h, 2e-3 * sc, 0.25 * sc);
+    if (s > 4.0 * sc) break;
+  }
+  return clamp(res, 0.0, 1.0);
+}
+
+vec3 background(vec2 ndc) {
+  vec2 q = (ndc - uShift) * vec2(uRes.x / uRes.y, 1.0);
+  return mix(uBg0, uBg1, smoothstep(0.0, 1.35, length(q)));
+}
+
+vec3 render(vec3 ro, vec3 rd, float pixA, vec3 bg) {
+  // bounding sphere
+  float R = 2.7;
+  float b = dot(ro, rd);
+  float c = dot(ro, ro) - R * R;
+  float disc = b * b - c;
+  if (disc < 0.0) return bg;
+  float sq = sqrt(disc);
+  float t = max(0.0, -b - sq);
+  float tMax = -b + sq;
+  if (tMax < 0.0) return bg;
+  bool hit = false;
+  for (int i = 0; i < 260; i++) {
+    float d = mapD(ro + rd * t);
+    float eps = max(1e-7, 0.6 * pixA * t);
+    if (d < eps) { hit = true; break; }
+    t += 0.9 * d;
+    if (t > tMax) break;
+  }
+  if (!hit) return bg;
+  vec3 p = ro + rd * t;
+  int a1, a2, mat;
+  map(p, a1, a2, mat);
+  float h = max(1e-7, 0.5 * pixA * t);
+  float k0 = mapD(p + vec3(h, -h, -h));
+  float k1 = mapD(p + vec3(-h, -h, h));
+  float k2 = mapD(p + vec3(-h, h, -h));
+  float k3 = mapD(p + vec3(h, h, h));
+  vec3 n = normalize(vec3(k0 - k1 - k2 + k3, -k0 - k1 + k2 + k3, -k0 + k1 - k2 + k3));
+
+  float sc = clamp(t / 4.2, 1e-4, 1.0);
+  vec3 L = normalize(mix(uKey, -rd, uHead));
+  float sh = softShadow(p + n * 4.0 * h, L, sc);
+  float occ = 0.0, w = 1.0;
+  for (int i = 1; i < 6; i++) {
+    float hh = 0.012 * float(i) * sc;
+    occ += w * (hh - mapD(p + n * hh)) / sc;
+    w *= 0.7;
+  }
+  float ao = clamp(1.0 - 6.0 * occ, 0.0, 1.0);
+
+  vec3 base;
+  if (mat == 2) base = uGold;
+  else if (mat == 1 || a1 < 0) base = uCream;
+  else {
+    int b2 = a2 < 0 ? a1 : a2;
+    base = 0.72 * uPal[a1] + 0.28 * uPal[b2];
+    float m = uMode == 1 ? uTint : clamp(uLevel, 0.0, 1.0);
+    base = mix(uCream, base, m);
+  }
+  float diff = max(0.0, dot(n, L));
+  float fill = max(0.0, -n.x * uKey.x - n.y * uKey.y + 0.3 * n.z);
+  vec3 hv = normalize(L - rd);
+  float spec = pow(max(0.0, dot(n, hv)), 40.0);
+  float sky = 0.5 + 0.5 * n.z;
+  float fres = pow(1.0 + dot(n, rd), 4.0);
+  float tr = t / max(uCamDist, 1e-5);
+  float att = mix(1.0, 1.0 / (1.0 + 7.0 * tr * tr), uHead);
+  float key = 1.6 * diff * sh * att;
+  float amb = (0.035 + 0.10 * sky + 0.10 * fill + 0.05 * (1.0 - sky)) * ao * att;
+  vec3 col = base * (key + amb) + vec3(0.30, 0.30, 0.32) * spec * sh + vec3(0.02, 0.025, 0.04) * fres * ao;
+  if (mat == 2) col = col * 0.62 + uGold * 0.10;        // the cut face, a warm solid wall
+  if (mat == 1) col = col * 0.8 + uCream * (0.16 + 0.35 * fres); // the holes
+  return col;
+}
+
+float hash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7)) + uSeed * 17.13) * 43758.5453); }
+
+void main() {
+  vec3 acc = vec3(0.0);
+  float pixA = 2.0 * uTanV / uRes.y;
+  float aspect = uRes.x / uRes.y;
+  for (int sy = 0; sy < 3; sy++) {
+    if (sy >= uAA) break;
+    for (int sx = 0; sx < 3; sx++) {
+      if (sx >= uAA) break;
+      vec2 off = (vec2(float(sx), float(sy)) + 0.5) / float(uAA) - 0.5;
+      vec2 ndc = ((gl_FragCoord.xy + off) / uRes) * 2.0 - 1.0;
+      vec2 q = ndc - uShift;
+      vec3 rd = normalize(uF + q.x * uTanV * aspect * uR + q.y * uTanV * uU);
+      vec3 bg = background(ndc);
+      vec3 c = bg;
+      if (uSolid > 0.001) c = mix(bg, render(uCam, rd, pixA, bg), uSolid);
+      c = c / (1.0 + 0.10 * c);
+      acc += pow(clamp(c, 0.0, 1.0), vec3(1.0 / 2.2));
+    }
+  }
+  acc /= float(uAA * uAA);
+  vec2 vq = (gl_FragCoord.xy / uRes) * 2.0 - 1.0;
+  acc *= 1.0 - 0.38 * smoothstep(0.55, 1.45, length(vq * vec2(1.0, 0.85)));
+  acc += (hash(gl_FragCoord.xy) - 0.5) * 0.022;
+  outColor = vec4(acc * uFade, 1.0);
+}`;
+
+const VS_PTS = `#version 300 es
+in vec3 aPos;
+in float aCol;
+uniform vec3 uCam, uF, uR, uU;
+uniform float uTanV, uAspect, uSize;
+uniform vec2 uShift;
+uniform vec3 uPal[6];
+out vec3 vCol;
+void main() {
+  vec3 d = aPos - uCam;
+  float z = dot(d, uF);
+  vec2 ndc = vec2(dot(d, uR) / (z * uTanV * uAspect), dot(d, uU) / (z * uTanV)) + uShift;
+  gl_Position = vec4(ndc, 0.0, 1.0);
+  gl_PointSize = uSize;
+  vCol = uPal[int(aCol + 0.5)];
+}`;
+
+const FS_PTS = `#version 300 es
+precision highp float;
+in vec3 vCol;
+uniform float uAlpha;
+out vec4 o;
+void main() {
+  vec2 q = gl_PointCoord * 2.0 - 1.0;
+  float r2 = dot(q, q);
+  if (r2 > 1.0) discard;
+  o = vec4(vCol * exp(-r2 * 3.0) * uAlpha, 1.0);
+}`;
+
+function compile(type, src) {
+  const sh = gl.createShader(type);
+  gl.shaderSource(sh, src);
+  gl.compileShader(sh);
+  if (!gl.getShaderParameter(sh, gl.COMPILE_STATUS)) throw new Error(gl.getShaderInfoLog(sh));
+  return sh;
+}
+function program(vs, fs) {
+  const p = gl.createProgram();
+  gl.attachShader(p, compile(gl.VERTEX_SHADER, vs));
+  gl.attachShader(p, compile(gl.FRAGMENT_SHADER, fs));
+  gl.linkProgram(p);
+  if (!gl.getProgramParameter(p, gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(p));
+  const u = {};
+  const n = gl.getProgramParameter(p, gl.ACTIVE_UNIFORMS);
+  for (let i = 0; i < n; i++) {
+    const info = gl.getActiveUniform(p, i);
+    u[info.name.replace("[0]", "")] = gl.getUniformLocation(p, info.name);
+  }
+  return { p, u };
+}
+
+let PM, PP, quadVAO, ptsVAO;
+function initGL() {
+  PM = program(VS_QUAD, FS_MARCH);
+  PP = program(VS_PTS, FS_PTS);
+  quadVAO = gl.createVertexArray();
+  gl.bindVertexArray(quadVAO);
+  const qb = gl.createBuffer();
+  gl.bindBuffer(gl.ARRAY_BUFFER, qb);
+  gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 3, -1, -1, 3]), gl.STATIC_DRAW);
+  const la = gl.getAttribLocation(PM.p, "aP");
+  gl.enableVertexAttribArray(la);
+  gl.vertexAttribPointer(la, 2, gl.FLOAT, false, 0, 0);
+
+  ptsVAO = gl.createVertexArray();
+  gl.bindVertexArray(ptsVAO);
+  const pb = gl.createBuffer();
+  gl.bindBuffer(gl.ARRAY_BUFFER, pb);
+  gl.bufferData(gl.ARRAY_BUFFER, PTS, gl.STATIC_DRAW);
+  const lp = gl.getAttribLocation(PP.p, "aPos");
+  gl.enableVertexAttribArray(lp);
+  gl.vertexAttribPointer(lp, 3, gl.FLOAT, false, 0, 0);
+  const cb = gl.createBuffer();
+  gl.bindBuffer(gl.ARRAY_BUFFER, cb);
+  gl.bufferData(gl.ARRAY_BUFFER, PCOL, gl.STATIC_DRAW);
+  const lc = gl.getAttribLocation(PP.p, "aCol");
+  gl.enableVertexAttribArray(lc);
+  gl.vertexAttribPointer(lc, 1, gl.FLOAT, false, 0, 0);
+  gl.bindVertexArray(null);
+}
+
+const PAL_LIN = PAL.map(lin).flat();
+const PAL_SRGB = PAL.flat();
+const KEY = norm3([0.45, -0.35, 0.82]);
+
+function renderGL(s, W, H, aa) {
+  if (glCanvas.width !== W || glCanvas.height !== H) { glCanvas.width = W; glCanvas.height = H; }
+  gl.viewport(0, 0, W, H);
+  const cb = cameraBasis(s.cam, W, H);
+  gl.disable(gl.BLEND);
+  gl.useProgram(PM.p);
+  const u = PM.u;
+  gl.uniform2f(u.uRes, W, H);
+  gl.uniform3fv(u.uCam, cb.pos); gl.uniform3fv(u.uF, cb.f); gl.uniform3fv(u.uR, cb.r); gl.uniform3fv(u.uU, cb.u);
+  gl.uniform1f(u.uTanV, cb.tanV);
+  gl.uniform2fv(u.uShift, cb.shift);
+  gl.uniform1i(u.uMode, s.mode);
+  gl.uniform1f(u.uLevel, s.level);
+  gl.uniform1f(u.uExplode, s.explode);
+  gl.uniform1f(u.uTetraOff, s.tetraOff);
+  gl.uniform1f(u.uTetraScale, s.tetraScale);
+  gl.uniform1f(u.uTint, s.tint);
+  gl.uniform1f(u.uCutOn, s.cutOn);
+  gl.uniform4f(u.uCut, 0, 0, 1, s.cutC);
+  gl.uniform3fv(u.uKey, KEY);
+  gl.uniform1f(u.uHead, s.head);
+  gl.uniform1f(u.uCamDist, s.cam.dist);
+  gl.uniform1f(u.uSolid, s.solid);
+  gl.uniform1f(u.uFade, s.fade);
+  gl.uniform1f(u.uSeed, (s.t * 30) % 97);
+  gl.uniform1i(u.uAA, aa);
+  gl.uniform3fv(u.uPal, PAL_LIN);
+  gl.uniform3fv(u.uCream, lin(CREAM));
+  gl.uniform3fv(u.uGold, lin([0.95, 0.74, 0.44]));
+  gl.uniform3fv(u.uBg0, lin([0.085, 0.09, 0.125]));
+  gl.uniform3fv(u.uBg1, lin([0.018, 0.019, 0.03]));
+  gl.bindVertexArray(quadVAO);
+  gl.drawArrays(gl.TRIANGLES, 0, 3);
+
+  // the chaos-game cloud, additive
+  const vis = (1 - s.solid) * s.fade;
+  if (s.n > 0 && vis > 0.002) {
+    const n = s.n;
+    const hs = Math.min(W, H) / 1080;
+    const size = Math.max(1.2, hs * clamp(30 / Math.pow(n, 0.22), 2.2, 26));
+    const alpha = clamp((0.5 * W * H) / (n * size * size), 0.02, 1);
+    gl.enable(gl.BLEND);
+    gl.blendFunc(gl.ONE, gl.ONE);
+    gl.useProgram(PP.p);
+    const v = PP.u;
+    gl.uniform3fv(v.uCam, cb.pos); gl.uniform3fv(v.uF, cb.f); gl.uniform3fv(v.uR, cb.r); gl.uniform3fv(v.uU, cb.u);
+    gl.uniform1f(v.uTanV, cb.tanV);
+    gl.uniform1f(v.uAspect, cb.aspect);
+    gl.uniform2fv(v.uShift, cb.shift);
+    gl.uniform1f(v.uSize, size);
+    gl.uniform3fv(v.uPal, PAL_SRGB);
+    gl.uniform1f(v.uAlpha, alpha * vis);
+    gl.bindVertexArray(ptsVAO);
+    gl.drawArrays(gl.POINTS, 1, n);
+    gl.disable(gl.BLEND);
+  }
+  gl.bindVertexArray(null);
+  return cb;
+}
+
+// ============================================================== overlay: construction, captions, counters
+let LANG = "ru";
+const MONO = '"JetBrains Mono", ui-monospace, Menlo, Consolas, monospace';
+const DISPLAY = '"Unbounded", "Segoe UI", system-ui, sans-serif';
+const css = (c, a = 1) => `rgba(${Math.round(c[0] * 255)},${Math.round(c[1] * 255)},${Math.round(c[2] * 255)},${a})`;
+const GOLD = [0.90, 0.71, 0.40];
+
+function wrapLines(ctx, text, maxW) {
+  const words = text.split(" ");
+  const lines = [];
+  let line = "";
+  for (const w of words) {
+    const test = line ? line + " " + w : w;
+    if (ctx.measureText(test).width > maxW && line) { lines.push(line); line = w; }
+    else line = test;
+  }
+  if (line) lines.push(line);
+  return lines;
+}
+
+function layout(W, H) {
+  const ar = W / H;
+  if (ar < 0.8) return { m: 0.08 * W, top: 0.085 * H, eb: 0.025 * W, hd: 0.060 * W, maxW: 0.84 * W, bottom: 0.875 * H, num: 0.078 * W, lab: 0.025 * W, title: 0.092 * W, titleY: 0.80 * H, center: true };
+  if (ar < 1.3) return { m: 0.07 * W, top: 0.07 * H, eb: 0.021 * W, hd: 0.042 * W, maxW: 0.70 * W, bottom: 0.915 * H, num: 0.052 * W, lab: 0.021 * W, title: 0.056 * W, titleY: 0.79 * H, center: false };
+  return { m: 0.06 * W, top: 0.12 * H, eb: 0.0125 * W, hd: 0.026 * W, maxW: 0.36 * W, bottom: 0.88 * H, num: 0.034 * W, lab: 0.0125 * W, title: 0.040 * W, titleY: 0.52 * H, center: false };
+}
+
+function blockAlpha(t, t0, t1) { return smooth(t0, t0 + 0.6, t) * (1 - smooth(t1 - 0.5, t1, t)); }
+
+function drawCaption(ctx, L, t, cap, W, H) {
+  const a = blockAlpha(t, cap.t0, cap.t1);
+  if (a <= 0.001) return;
+  const [eyebrow, head] = COPY[LANG][cap.key];
+  const rise = (1 - easeOut(seg(t, cap.t0, cap.t0 + 0.9))) * 0.015 * H;
+  ctx.save();
+  ctx.globalAlpha *= a;
+  ctx.textBaseline = "alphabetic";
+  ctx.fillStyle = css(GOLD);
+  ctx.font = `500 ${L.eb}px ${MONO}`;
+  if ("letterSpacing" in ctx) ctx.letterSpacing = `${(L.eb * 0.18).toFixed(1)}px`;
+  ctx.fillText(eyebrow, L.m, L.top + rise);
+  if ("letterSpacing" in ctx) ctx.letterSpacing = "0px";
+  ctx.fillStyle = css(CREAM);
+  ctx.font = `300 ${L.hd}px ${DISPLAY}`;
+  const lines = wrapLines(ctx, head, L.maxW);
+  lines.forEach((ln, i) => ctx.fillText(ln, L.m, L.top + rise + L.eb * 1.2 + L.hd * (1.25 + 1.22 * i)));
+  ctx.restore();
+}
+
+function drawCounter(ctx, L, a, value, label) {
+  if (a <= 0.001) return;
+  ctx.save();
+  ctx.globalAlpha *= a;
+  ctx.fillStyle = css(CREAM);
+  ctx.font = `500 ${L.num}px ${MONO}`;
+  ctx.fillText(value, L.m, L.bottom);
+  ctx.fillStyle = css(GOLD, 0.9);
+  ctx.font = `400 ${L.lab}px ${MONO}`;
+  if ("letterSpacing" in ctx) ctx.letterSpacing = `${(L.lab * 0.08).toFixed(1)}px`;
+  ctx.fillText(label, L.m, L.bottom + L.lab * 1.9);
+  ctx.restore();
+}
+
+// text with subscripts: parts = [[text], [text, 1], ...]
+function drawRich(ctx, parts, x, y, size, align) {
+  const widths = parts.map(([txt, sub]) => {
+    ctx.font = `500 ${sub ? size * 0.68 : size}px ${MONO}`;
+    return ctx.measureText(txt).width;
+  });
+  const total = widths.reduce((a, b) => a + b, 0);
+  let cx = align === "center" ? x - total / 2 : x;
+  const prevAlign = ctx.textAlign;
+  ctx.textAlign = "left";
+  parts.forEach(([txt, sub], i) => {
+    ctx.font = `500 ${sub ? size * 0.68 : size}px ${MONO}`;
+    ctx.fillText(txt, cx, y + (sub ? size * 0.28 : 0));
+    cx += widths[i];
+  });
+  ctx.textAlign = prevAlign;
+}
+
+function glowDot(ctx, x, y, r, col, a) {
+  const g = ctx.createRadialGradient(x, y, 0, x, y, r);
+  g.addColorStop(0, css(col, a));
+  g.addColorStop(0.25, css(col, a * 0.55));
+  g.addColorStop(1, css(col, 0));
+  ctx.fillStyle = g;
+  ctx.beginPath();
+  ctx.arc(x, y, r, 0, Math.PI * 2);
+  ctx.fill();
+}
+
+function drawOverlay(ctx, W, H, s, cb, clear) {
+  if (clear) ctx.clearRect(0, 0, W, H);
+  const t = s.t;
+  const L = layout(W, H);
+  const C = COPY[LANG];
+  const fmt = new Intl.NumberFormat(C.locale);
+  const u = Math.min(W, H) / 1080;
+  ctx.save();
+  ctx.globalAlpha = s.fade;
+
+  // wireframe octahedron and its six vertices
+  if (s.wire > 0.001) {
+    const P = VERTS.map((v) => project(v, cb, W, H));
+    ctx.lineWidth = 1.3 * u;
+    EDGES.forEach(([i, j], k) => {
+      const grow = smooth(0.25 + k * 0.06, 0.9 + k * 0.06, t);
+      if (!P[i] || !P[j] || grow <= 0) return;
+      ctx.strokeStyle = css(CREAM, 0.22 * s.wire);
+      ctx.beginPath();
+      ctx.moveTo(P[i][0], P[i][1]);
+      ctx.lineTo(lerp(P[i][0], P[j][0], grow), lerp(P[i][1], P[j][1], grow));
+      ctx.stroke();
+    });
+    P.forEach((p, i) => {
+      if (!p) return;
+      const pop = smooth(0.3 + i * 0.18, 0.6 + i * 0.18, t);
+      const chosen = s.n > 0 && s.n < 60 && PV[s.n] === i ? 1 : 0;
+      const r = (16 + 10 * chosen) * u * pop;
+      glowDot(ctx, p[0], p[1], r * 2.2, PAL[i], 0.9 * s.wire);
+      ctx.fillStyle = css([1, 1, 1], 0.95 * s.wire * pop);
+      ctx.beginPath(); ctx.arc(p[0], p[1], 3.2 * u * pop, 0, Math.PI * 2); ctx.fill();
+    });
+  }
+
+  // the first jumps, drawn as a construction
+  const n = s.n;
+  const cons = n > 0 ? 1 - smooth(18, 60, n) : 0;
+  if (cons > 0.001) {
+    const pt = (i) => project([PTS[3 * i], PTS[3 * i + 1], PTS[3 * i + 2]], cb, W, H);
+    ctx.lineWidth = 1.6 * u;
+    for (let k = Math.max(1, n - 5); k < n; k++) {
+      const a = pt(k - 1), b = pt(k);
+      if (!a || !b) continue;
+      ctx.strokeStyle = css(CREAM, 0.12 * cons * (1 - (n - k) / 6));
+      ctx.beginPath(); ctx.moveTo(a[0], a[1]); ctx.lineTo(b[0], b[1]); ctx.stroke();
+    }
+    const prev = pt(n - 1), cur = pt(n), vx = project(VERTS[PV[n]], cb, W, H);
+    if (prev && cur && vx) {
+      ctx.setLineDash([6 * u, 7 * u]);
+      ctx.strokeStyle = css(PAL[PV[n]], 0.55 * cons);
+      ctx.beginPath(); ctx.moveTo(cur[0], cur[1]); ctx.lineTo(vx[0], vx[1]); ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.strokeStyle = css(CREAM, 0.9 * cons);
+      ctx.lineWidth = 2.2 * u;
+      ctx.beginPath(); ctx.moveTo(prev[0], prev[1]); ctx.lineTo(cur[0], cur[1]); ctx.stroke();
+      ctx.strokeStyle = css(PAL[PV[n]], 0.95 * cons);
+      ctx.lineWidth = 1.6 * u;
+      ctx.beginPath(); ctx.arc(cur[0], cur[1], 11 * u, 0, Math.PI * 2); ctx.stroke();
+      if (n <= 7) {
+        ctx.fillStyle = css(CREAM, 0.85 * cons);
+        ctx.font = `500 ${30 * u}px ${MONO}`;
+        ctx.fillText("½", cur[0] + 18 * u, cur[1] - 16 * u);
+      }
+    }
+  }
+
+  // scrims keep the type readable over bright walls
+  const capA = Math.max(...CAPTIONS.map((c) => blockAlpha(t, c.t0, c.t1)));
+  const cntA = Math.max(blockAlpha(t, 3.0, 11.8), blockAlpha(t, 17.9, 24.9), blockAlpha(t, 25.3, 30.9), blockAlpha(t, 32.6, 39.6), blockAlpha(t, 42.2, 46.4));
+  const scrim = (y0, y1, a) => {
+    if (a <= 0.001) return;
+    const g = ctx.createLinearGradient(0, y0, 0, y1);
+    g.addColorStop(0, `rgba(7,8,13,${0.78 * a})`);
+    g.addColorStop(1, "rgba(7,8,13,0)");
+    ctx.fillStyle = g;
+    ctx.fillRect(0, Math.min(y0, y1), W, Math.abs(y1 - y0));
+  };
+  const deep = smooth(1.2, 0.5, s.cam.dist);   // inside the tunnel the walls fill the frame
+  scrim(0, L.center ? 0.36 * H : 0.5 * H, capA * (0.35 + 0.65 * deep));
+  scrim(H, L.center ? 0.72 * H : 0.6 * H, cntA * (0.35 + 0.65 * deep));
+
+  // captions
+  for (const cap of CAPTIONS) drawCaption(ctx, L, t, cap, W, H);
+
+  // counters
+  drawCounter(ctx, L, blockAlpha(t, 3.0, 11.8), fmt.format(Math.max(1, s.n)), C.jumps);
+  if (t > 17.6 && t < 25.2) {
+    const k = Math.round(clamp(s.level, 1, 9));
+    drawCounter(ctx, L, blockAlpha(t, 17.9, 24.9), fmt.format(6 ** k), C.octas(k));
+  }
+  if (t > 25 && t < 31.2) drawCounter(ctx, L, blockAlpha(t, 25.3, 30.9), `z = ${clamp(s.cutC, 0, 1).toFixed(3)}`, C.cut);
+  if (t > 32 && t < 40) {
+    const z = Math.max(1, ZOOM_D / s.cam.dist);
+    const zs = z < 10 ? new Intl.NumberFormat(C.locale, { minimumFractionDigits: 1, maximumFractionDigits: 1 }).format(z) : fmt.format(Math.round(z));
+    drawCounter(ctx, L, blockAlpha(t, 32.6, 39.6), "×" + zs, C.zoom);
+  }
+
+  // closing title
+  const oa = blockAlpha(t, 42.2, 46.4);
+  if (oa > 0.001) {
+    ctx.save();
+    ctx.globalAlpha *= oa;
+    const rise = (1 - easeOut(seg(t, 42.2, 43.4))) * 0.02 * H;
+    ctx.textAlign = L.center ? "center" : "left";
+    const x = L.center ? W / 2 : L.m;
+    ctx.fillStyle = css(CREAM);
+    ctx.font = `500 ${L.title}px ${DISPLAY}`;
+    C.title.forEach((ln, i) => ctx.fillText(ln, x, L.titleY + rise + i * L.title * 1.12));
+    const y2 = L.titleY + rise + L.title * 1.12 + L.title * 0.95;
+    ctx.fillStyle = css(GOLD);
+    drawRich(ctx, C.sub, x, y2, L.lab * 1.6, ctx.textAlign);
+    ctx.fillStyle = css(CREAM, 0.6);
+    ctx.font = `400 ${L.lab * 1.2}px ${MONO}`;
+    if ("letterSpacing" in ctx) ctx.letterSpacing = `${(L.lab * 0.06).toFixed(1)}px`;
+    ctx.fillText(C.small, x, y2 + L.lab * 2.6);
+    ctx.restore();
+  }
+  ctx.restore();
+}
+
+// ============================================================== stage sizing & real-time loop
+const frame = document.getElementById("frame");
+const stage = document.getElementById("stage");
+const ovCtx = ovCanvas.getContext("2d");
+let renderScale = 0.75;
+let cssW = 0, cssH = 0;
+
+function fitFrame() {
+  const [fw, fh] = FORMATS[ASPECT_MODE];
+  const r = stage.getBoundingClientRect();
+  const cs = getComputedStyle(stage);
+  const availW = r.width - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight);
+  const availH = r.height - parseFloat(cs.paddingTop) - parseFloat(cs.paddingBottom);
+  const k = Math.min(availW / fw, availH / fh);
+  cssW = Math.max(1, Math.floor(fw * k));
+  cssH = Math.max(1, Math.floor(fh * k));
+  frame.style.width = cssW + "px";
+  frame.style.height = cssH + "px";
+  const dpr = Math.min(window.devicePixelRatio || 1, 2);
+  ovCanvas.width = Math.round(cssW * dpr);
+  ovCanvas.height = Math.round(cssH * dpr);
+}
+
+let T = 0, playing = true, exporting = false, lastNow = 0, frameEMA = 16;
+const timeEl = document.getElementById("time");
+const scrub = document.getElementById("scrub");
+const playBtn = document.getElementById("play");
+
+function drawRealtime() {
+  const dpr = Math.min(window.devicePixelRatio || 1, 2);
+  const scale = playing ? renderScale : 1;   // a paused frame is drawn at full resolution
+  const W = Math.max(2, Math.round(cssW * dpr * scale));
+  const H = Math.max(2, Math.round(cssH * dpr * scale));
+  const s = stateAt(T);
+  renderGL(s, W, H, 1);
+  // the overlay uses the same camera, recomputed at overlay resolution
+  const cbo = cameraBasis(s.cam, ovCanvas.width, ovCanvas.height);
+  drawOverlay(ovCtx, ovCanvas.width, ovCanvas.height, s, cbo, true);
+  timeEl.textContent = `${T.toFixed(1).padStart(4, "0")} / ${T_END.toFixed(1)}`;
+  if (document.activeElement !== scrub) scrub.value = T.toFixed(2);
+}
+
+function tick(now) {
+  const dt = lastNow ? (now - lastNow) / 1000 : 0;
+  lastNow = now;
+  if (!exporting && playing) {
+    T += Math.min(dt, 0.1);
+    if (T >= T_END) T -= T_END;
+    // dynamic resolution keeps playback smooth on slower GPUs
+    frameEMA = lerp(frameEMA, dt * 1000 || 16, 0.1);
+    if (frameEMA > 30 && renderScale > 0.34) renderScale = Math.max(0.34, renderScale * 0.94);
+    else if (frameEMA < 19 && renderScale < 1) renderScale = Math.min(1, renderScale * 1.02);
+    drawRealtime();
+  }
+  requestAnimationFrame(tick);
+}
+
+// ============================================================== controls
+function setPlaying(p) {
+  playing = p;
+  if (!p) requestAnimationFrame(() => drawRealtime());
+  playBtn.textContent = p ? "Пауза" : "Смотреть";
+  playBtn.setAttribute("aria-label", p ? "Пауза" : "Смотреть");
+}
+playBtn.addEventListener("click", () => setPlaying(!playing));
+document.getElementById("restart").addEventListener("click", () => { T = 0; setPlaying(true); });
+scrub.addEventListener("input", () => { T = parseFloat(scrub.value); if (!playing) drawRealtime(); });
+function setAspect(mode) {
+  ASPECT_MODE = mode;
+  [["a916", "916"], ["a11", "11"], ["a169", "169"]].forEach(([id, m]) => document.getElementById(id).setAttribute("aria-pressed", String(m === mode)));
+  fitFrame();
+  drawRealtime();
+}
+document.getElementById("a916").addEventListener("click", () => setAspect("916"));
+document.getElementById("a11").addEventListener("click", () => setAspect("11"));
+document.getElementById("a169").addEventListener("click", () => setAspect("169"));
+function setLang(l) {
+  LANG = l;
+  document.getElementById("lru").setAttribute("aria-pressed", String(l === "ru"));
+  document.getElementById("len").setAttribute("aria-pressed", String(l === "en"));
+  drawRealtime();
+}
+document.getElementById("lru").addEventListener("click", () => setLang("ru"));
+document.getElementById("len").addEventListener("click", () => setLang("en"));
+const bar = document.getElementById("bar");
+function toggleUI(force) {
+  const hide = force ?? !bar.classList.contains("hidden-ui");
+  bar.classList.toggle("hidden-ui", hide);
+  requestAnimationFrame(() => { fitFrame(); drawRealtime(); });
+}
+document.getElementById("hide").addEventListener("click", () => toggleUI(true));
+stage.addEventListener("click", () => { if (bar.classList.contains("hidden-ui")) toggleUI(false); });
+window.addEventListener("keydown", (e) => {
+  if (e.target.tagName === "INPUT" || e.target.tagName === "SELECT" || !exportBox.hidden) return;
+  if (e.code === "Space") { e.preventDefault(); setPlaying(!playing); }
+  else if (e.key === "h" || e.key === "H" || e.key === "р" || e.key === "Р") toggleUI();
+  else if (e.key === "ArrowRight") T = Math.min(T_END - 0.01, T + 2);
+  else if (e.key === "ArrowLeft") T = Math.max(0, T - 2);
+});
+new ResizeObserver(() => { fitFrame(); drawRealtime(); }).observe(stage);
+
+// ============================================================== offline export (WebCodecs, frame by frame)
+const exportBox = document.getElementById("exportBox");
+const expProg = document.getElementById("expProg");
+const expMsg = document.getElementById("expMsg");
+const expGo = document.getElementById("expGo");
+const expCancel = document.getElementById("expCancel");
+let cancelExport = false;
+
+document.getElementById("export").addEventListener("click", () => {
+  const [w, h] = FORMATS[ASPECT_MODE];
+  document.getElementById("expSize").textContent = `${w} × ${h}, ${T_END} секунд, подписи: ${LANG.toUpperCase()}`;
+  expProg.value = 0;
+  expMsg.textContent = "Кадры рендерятся по одному, поэтому видео получается без рывков на любом компьютере.";
+  expGo.disabled = false;
+  exportBox.hidden = false;
+  expGo.focus();
+});
+expCancel.addEventListener("click", () => {
+  if (exporting) { cancelExport = true; return; }
+  exportBox.hidden = true;
+});
+
+async function pickEncoder(W, H, fps) {
+  if (typeof VideoEncoder === "undefined") return null;
+  const bitrate = Math.round(W * H * fps * 0.32);
+  if (window.Mp4Muxer) {
+    for (const codec of ["avc1.640033", "avc1.64002A", "avc1.640028", "avc1.4D0033", "avc1.42E033"]) {
+      const cfg = { codec, width: W, height: H, bitrate, framerate: fps, avc: { format: "avc" } };
+      try { if ((await VideoEncoder.isConfigSupported(cfg)).supported) return { cfg, kind: "mp4" }; } catch (e) { /* try the next */ }
+    }
+  }
+  if (window.WebMMuxer) {
+    for (const codec of ["vp09.00.41.08", "vp09.00.40.08", "vp8"]) {
+      const cfg = { codec, width: W, height: H, bitrate, framerate: fps };
+      try { if ((await VideoEncoder.isConfigSupported(cfg)).supported) return { cfg, kind: "webm" }; } catch (e) { /* try the next */ }
+    }
+  }
+  return null;
+}
+
+async function saveFile(name, blob) {
+  const host = window.claude && typeof window.claude.use === "function" ? await window.claude.use("downloads") : null;
+  if (host) {
+    try { await host.save({ filename: name, data: blob }); return "Файл сохранён."; }
+    catch (e) { return e && e.code === "declined" ? "Сохранение отменено." : "Не получилось сохранить файл: " + (e && e.message ? e.message : e); }
+  }
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url; a.download = name;
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 60000);
+  return "Файл сохранён в загрузки.";
+}
+
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+expGo.addEventListener("click", async () => {
+  const fps = parseInt(document.getElementById("expFps").value, 10);
+  const aa = parseInt(document.getElementById("expAA").value, 10);
+  const [W, H] = FORMATS[ASPECT_MODE];
+  const enc = await pickEncoder(W, H, fps);
+  if (!enc) { expMsg.textContent = "Этот браузер не умеет кодировать видео (нужен WebCodecs: Chrome, Edge или свежий Safari)."; return; }
+  exporting = true; cancelExport = false; expGo.disabled = true;
+  ovCtx.clearRect(0, 0, ovCanvas.width, ovCanvas.height);
+  expCancel.textContent = "Отменить";
+  await fontsReady;
+  const comp = document.createElement("canvas");
+  comp.width = W; comp.height = H;
+  const cctx = comp.getContext("2d");
+  const muxer = enc.kind === "mp4"
+    ? new Mp4Muxer.Muxer({ target: new Mp4Muxer.ArrayBufferTarget(), video: { codec: "avc", width: W, height: H, frameRate: fps }, fastStart: "in-memory" })
+    : new WebMMuxer.Muxer({ target: new WebMMuxer.ArrayBufferTarget(), video: { codec: enc.cfg.codec.startsWith("vp8") ? "V_VP8" : "V_VP9", width: W, height: H, frameRate: fps } });
+  let failure = null;
+  const encoder = new VideoEncoder({ output: (chunk, meta) => muxer.addVideoChunk(chunk, meta), error: (e) => { failure = e; } });
+  encoder.configure(enc.cfg);
+  const total = Math.round(T_END * fps);
+  const started = performance.now();
+  try {
+    for (let i = 0; i < total; i++) {
+      if (cancelExport || failure) break;
+      const tt = i / fps;
+      const s = stateAt(tt);
+      const cb = renderGL(s, W, H, aa);
+      cctx.drawImage(glCanvas, 0, 0);
+      drawOverlay(cctx, W, H, s, cb, false);
+      const vf = new VideoFrame(comp, { timestamp: Math.round((i * 1e6) / fps), duration: Math.round(1e6 / fps) });
+      encoder.encode(vf, { keyFrame: i % (fps * 2) === 0 });
+      vf.close();
+      while (encoder.encodeQueueSize > 4) await sleep(4);
+      if (i % 3 === 0) {
+        expProg.value = (i + 1) / total;
+        const el = (performance.now() - started) / 1000;
+        const eta = (el / (i + 1)) * (total - i - 1);
+        expMsg.textContent = `Кадр ${i + 1} из ${total} · осталось около ${Math.ceil(eta)} с`;
+        await sleep(0);
+      }
+    }
+    await encoder.flush();
+  } catch (e) { failure = failure || e; }
+  exporting = false;
+  expGo.disabled = false;
+  expCancel.textContent = "Закрыть";
+  drawRealtime();
+  if (failure) { expMsg.textContent = "Кодирование остановилось с ошибкой: " + (failure.message || failure); return; }
+  if (cancelExport) { expMsg.textContent = "Экспорт отменён."; return; }
+  muxer.finalize();
+  expProg.value = 1;
+  const blob = new Blob([muxer.target.buffer], { type: enc.kind === "mp4" ? "video/mp4" : "video/webm" });
+  const name = `sierpinski-octahedron-${ASPECT_MODE === "916" ? "9x16" : ASPECT_MODE === "11" ? "1x1" : "16x9"}-${LANG}.${enc.kind}`;
+  expMsg.textContent = `Готово: ${(blob.size / 1048576).toFixed(1)} МБ. ` + (await saveFile(name, blob));
+});
+
+// ============================================================== boot
+const fontsReady = (document.fonts && document.fonts.load)
+  ? Promise.all([
+      document.fonts.load(`300 40px "Unbounded"`, "Октаэдр Sierpiński"),
+      document.fonts.load(`500 40px "Unbounded"`, "Октаэдр Sierpiński"),
+      document.fonts.load(`400 40px "JetBrains Mono"`, "0123456789 ×½"),
+      document.fonts.load(`500 40px "JetBrains Mono"`, "ХАОС 0123456789"),
+    ]).catch(() => null)
+  : Promise.resolve();
+
+// hooks for scripted, frame-exact rendering
+window.__reel = {
+  T_END, stateAt,
+  setAspect, setLang, fontsReady,
+  renderFrame(t, W, H, aa) {
+    exporting = true;
+    const c = document.createElement("canvas");
+    c.width = W; c.height = H;
+    const cx = c.getContext("2d");
+    const s = stateAt(t);
+    const cb = renderGL(s, W, H, aa || 1);
+    cx.drawImage(glCanvas, 0, 0);
+    drawOverlay(cx, W, H, s, cb, false);
+    return c;
+  },
+};
+
+if (!gl) {
+  stage.innerHTML = '<p class="fallback">Этому браузеру не хватает WebGL2. Откройте страницу в свежем Chrome, Edge, Firefox или Safari.</p>';
+} else {
+  initGL();
+  fitFrame();
+  if (window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches) { T = 14; setPlaying(false); }
+  fontsReady.then(() => drawRealtime());
+  requestAnimationFrame(tick);
+}
+</script>
+
+</body>
+</html>
